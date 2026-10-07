@@ -1,0 +1,17 @@
+node_modules/
+dist/
+*.tsbuildinfo
+*.log
+.DS_Store
+
+# dotenv files
+.env
+.env.*
+!.env.example
+
+# Run output (bin/agent writes here by default)
+.temp/
+
+# Claude
+.claude/settings.local.json
+CLAUDE.local.md

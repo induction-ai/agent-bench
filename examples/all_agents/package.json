@@ -1,0 +1,23 @@
+{
+  "private": true,
+  "name": "@agent-bench/example-all_agents",
+  "version": "0.1.0",
+  "description": "Every agent in the repo behind one command; bin/agent runs it",
+  "type": "module",
+  "scripts": {
+    "test": "../../bin/test --project all_agents",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-bench/board_meeting": "workspace:*",
+    "@agent-bench/runtime": "workspace:*",
+    "@agent-bench/travel_agent": "workspace:*",
+    "@agent-bench/trivia": "workspace:*",
+    "dotenv": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -1,0 +1,6 @@
+#!/bin/bash
+# Format the whole tree in place.
+set -e
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+node_modules/.bin/prettier --write . --log-level warn

@@ -1,0 +1,35 @@
+{
+  "private": true,
+  "name": "@agent-bench/root",
+  "version": "0.1.0",
+  "description": "Simulated-customer benchmarks for tool-using LLM agents: an agent, an LLM customer with done criteria, and an LLM judge",
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": ">=11 <12"
+  },
+  "type": "module",
+  "scripts": {
+    "agent": "bin/agent",
+    "test": "bin/test",
+    "test:watch": "vitest",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "bin/lint",
+    "format": "bin/format"
+  },
+  "prettier": {
+    "plugins": [
+      "@ianvs/prettier-plugin-sort-imports"
+    ],
+    "trailingComma": "es5"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@ianvs/prettier-plugin-sort-imports": "catalog:",
+    "@types/node": "catalog:",
+    "prettier": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

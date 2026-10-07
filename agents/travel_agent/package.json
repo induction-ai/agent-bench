@@ -1,0 +1,25 @@
+{
+  "private": true,
+  "name": "@agent-bench/travel_agent",
+  "version": "0.1.0",
+  "description": "Plans trips with flight, hotel, attraction and activity tools, plus Wikipedia for destination research",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*.js": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "../../bin/test --project travel_agent",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-bench/runtime": "workspace:*",
+    "@agent-bench/tools": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

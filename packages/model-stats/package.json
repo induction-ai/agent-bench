@@ -1,0 +1,23 @@
+{
+  "private": true,
+  "name": "@agent-bench/model-stats",
+  "version": "0.1.0",
+  "description": "Model list prices and cache thresholds, with a lookup API. src/ is generated; do not edit it by hand.",
+  "type": "module",
+  "exports": {
+    "./*.js": "./src/*.ts",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "test": "../../bin/test --project model-stats",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "tiktoken": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

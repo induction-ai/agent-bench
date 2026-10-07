@@ -1,0 +1,5 @@
+#!/bin/bash
+# Run one conversation with any agent in this repo (examples/all_agents).
+# See `bin/agent --help`.
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$ROOT/node_modules/.bin/tsx" "$ROOT/examples/all_agents/cli.ts" "$@"

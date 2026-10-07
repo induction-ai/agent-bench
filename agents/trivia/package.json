@@ -1,0 +1,24 @@
+{
+  "private": true,
+  "name": "@agent-bench/trivia",
+  "version": "0.1.0",
+  "description": "Answers scripted trivia questions from live Wikipedia, quoting the article",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*.js": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "../../bin/test --project trivia",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-bench/runtime": "workspace:*",
+    "@agent-bench/tools": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

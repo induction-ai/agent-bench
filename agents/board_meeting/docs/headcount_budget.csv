@@ -1,0 +1,8 @@
+Department,Q4 2025 Actual,Q1 2026 Actual,Q2 2026 Actual,Q2 2026 Budget,Q3 2026 Plan,Q4 2026 Plan,Notes
+Engineering,289,312,338,330,355,370,"Over budget by 8 heads in Q2. Atlas 4.0 crunch required additional contractors converted to FTE. Includes 12 new hires for APAC localization."
+Sales & Marketing,182,198,212,215,235,250,"Below budget by 3 heads. Two senior AE positions unfilled. APAC team (VP + 4 reps) onboarded in Q2."
+Customer Success,131,142,148,145,155,165,"Over budget by 3 heads. Added implementation engineers to handle enterprise onboarding backlog. Whitfield & Associates assigned dedicated CSM."
+G&A,101,105,103,105,108,112,"Below budget by 2 heads. Delayed finance analyst hire. Legal team added one paralegal for patent litigation support."
+Research,48,52,58,55,62,68,"Over budget by 3 heads. Accelerated Beacon 2.0 ML research hires. Added 2 ML engineers and 1 data scientist ahead of schedule."
+Product,36,38,32,38,40,45,"Below budget by 6 heads. VP of Product (Janet Liu) departed in April. Two senior PMs followed. Interim leadership by CTO Anil Gupta. Active search for replacement."
+Total,787,847,891,888,955,1010,"Net 44 new hires in Q2. 891 vs 888 budget = 3 over plan. Product team attrition is a concern flagged by board."

@@ -1,0 +1,12 @@
+#!/bin/bash
+# Run an example command: bin/example <name> [args], e.g.
+#   bin/example weather gemini --customer picnicker
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+NAME="$1"
+if [ -z "$NAME" ] || [ ! -f "$ROOT/examples/$NAME/cli.ts" ]; then
+  echo "Usage: bin/example <name> [args]. Examples:" >&2
+  ls "$ROOT/examples" >&2
+  exit 1
+fi
+shift
+exec "$ROOT/node_modules/.bin/tsx" "$ROOT/examples/$NAME/cli.ts" "$@"

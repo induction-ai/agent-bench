@@ -1,0 +1,22 @@
+#!/bin/bash
+# Every static check: formatting and types. Runs both and fails at the end if
+# either failed; bin/format fixes what prettier reports.
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+failed=()
+check() {
+  local name="$1"
+  shift
+  echo "==> $name"
+  "$@" || failed+=("$name")
+}
+
+check "prettier" node_modules/.bin/prettier --check . --log-level warn
+check "tsc" pnpm --silent -r typecheck
+
+if [ ${#failed[@]} -gt 0 ]; then
+  echo "Failed: ${failed[*]}" >&2
+  exit 1
+fi
+echo "All checks passed"

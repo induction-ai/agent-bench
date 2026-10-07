@@ -1,0 +1,21 @@
+{
+  "private": true,
+  "name": "@agent-bench/tools",
+  "version": "0.1.0",
+  "description": "Tools agents can share, one folder per family (wikipedia/: search, read by page id, look up an article by topic)",
+  "type": "module",
+  "exports": {
+    "./*.js": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-bench/runtime": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

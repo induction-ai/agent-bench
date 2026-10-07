@@ -1,0 +1,35 @@
+{
+  "private": true,
+  "name": "@agent-bench/runtime",
+  "version": "0.1.0",
+  "description": "The agent harness: an agent under test, a simulated customer with done criteria, an LLM judge, cost tracking, and the bin/agent CLI",
+  "type": "module",
+  "exports": {
+    "./*.js": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "../../bin/test --project runtime",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-bench/model-stats": "workspace:*",
+    "@ai-sdk/anthropic": "catalog:",
+    "@ai-sdk/google": "catalog:",
+    "@ai-sdk/openai": "catalog:",
+    "@pollyjs/adapter-fetch": "^6.0.7",
+    "@pollyjs/adapter-node-http": "^6.0.6",
+    "@pollyjs/core": "^6.0.6",
+    "@pollyjs/persister-fs": "^6.0.6",
+    "ai": "catalog:",
+    "liquidjs": "catalog:",
+    "yargs": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ai-sdk/provider": "catalog:",
+    "@types/node": "catalog:",
+    "@types/yargs": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

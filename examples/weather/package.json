@@ -1,0 +1,21 @@
+{
+  "private": true,
+  "name": "@agent-bench/example-weather",
+  "version": "0.1.0",
+  "description": "A minimal agent of your own, with one tool and one customer, behind its own command",
+  "type": "module",
+  "scripts": {
+    "test": "../../bin/test --project weather",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-bench/runtime": "workspace:*",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
