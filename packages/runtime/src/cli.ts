@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 import yargs from "yargs";
 import {
@@ -34,10 +33,6 @@ export type CliOptions = {
   /** Where runs are written unless --log_dir says otherwise. Default
    *  .temp/agents under the working directory. */
   logDir?: string;
-  /** Where an API key typed at a prompt is saved, when the person agrees.
-   *  Default .env in the working directory. Reading keys is the command's
-   *  job (the examples use dotenv); runCli only reads the environment. */
-  envFile?: string;
   /** Default process.argv.slice(2). */
   argv?: string[];
 };
@@ -104,32 +99,15 @@ async function confirm(
   }
 }
 
-/** Set (or replace) `name=value` in a .env file. */
-function saveToEnvFile(envFile: string, name: string, value: string) {
-  const line = `${name}=${value}`;
-  const existing = fs.existsSync(envFile)
-    ? fs.readFileSync(envFile, "utf8")
-    : "";
-  const pattern = new RegExp(`^${name}=.*$`, "m");
-  const next = pattern.test(existing)
-    ? existing.replace(pattern, line)
-    : `${existing}${existing && !existing.endsWith("\n") ? "\n" : ""}${line}\n`;
-  fs.writeFileSync(envFile, next);
-}
-
-/** Ask for `provider`'s API key, set it for this run, and offer to keep it
- *  in the .env file. */
-async function enterApiKey(provider: Provider, envFile: string) {
+/** Ask for `provider`'s API key and set it for this run. Keeping keys is
+ *  the command's business (the examples load .env), so it is not saved. */
+async function enterApiKey(provider: Provider) {
   const name = API_KEY_ENV[provider][0]!;
-  if (!interactive) fail(`${name} isn’t set. Set it, or add it to ${envFile}.`);
+  if (!interactive) fail(`${name} isn’t set.`);
   let key = "";
   while (!key) key = await questionHidden(`${name} (input hidden): `);
   process.env[name] = key;
-  const shown = path.relative(process.cwd(), envFile) || envFile;
-  if (await confirm(`Save ${name} to ${shown} for next time?`, true, "")) {
-    saveToEnvFile(envFile, name, key);
-    console.log(`Saved to ${shown}.`);
-  }
+  console.log(`${name} is set for this run. Add it to your .env to keep it.`);
 }
 
 const PROVIDER_LABELS: Record<Provider, string> = {
@@ -154,11 +132,7 @@ function isOpenAI(provider: Provider): boolean {
  * an API key set, in the order `providers` lists them. With no key at all,
  * the person picks a provider and enters its key.
  */
-async function pickProvider(
-  role: string,
-  hint: string,
-  envFile: string
-): Promise<Provider> {
+async function pickProvider(role: string, hint: string): Promise<Provider> {
   const keyed = providers.filter(hasApiKey);
   const first = keyed[0];
   if (first) {
@@ -174,7 +148,7 @@ async function pickProvider(
     providers.map((p) => ({ label: providerLabel(p), value: p })),
     hint
   );
-  await enterApiKey(provider, envFile);
+  await enterApiKey(provider);
   return provider;
 }
 
@@ -182,15 +156,14 @@ async function pickProvider(
 async function resolveProvider(
   value: string | undefined,
   role: string,
-  hint: string,
-  envFile: string
+  hint: string
 ): Promise<Provider | undefined> {
   if (value === undefined) return undefined;
   if ((providers as readonly string[]).includes(value)) {
     return value as Provider;
   }
   console.log(`There’s no provider “${value}”.`);
-  return pickProvider(role, hint, envFile);
+  return pickProvider(role, hint);
 }
 
 /** A model spec, asking again while it doesn't parse. */
@@ -222,15 +195,14 @@ async function supportChoice(
   providerArg: string | undefined,
   modelArg: string | undefined,
   role: string,
-  flag: string,
-  envFile: string
+  flag: string
 ): Promise<ModelChoice | undefined> {
   const model = await validModel(modelArg, `${flag}_model`);
   const hint = `Pass --${flag}_provider <${providers.join("|")}>.`;
   const provider =
-    (await resolveProvider(providerArg, role, hint, envFile)) ??
+    (await resolveProvider(providerArg, role, hint)) ??
     (model ? providerForModel(model) : undefined) ??
-    (model ? await pickProvider(role, hint, envFile) : undefined);
+    (model ? await pickProvider(role, hint) : undefined);
   return provider ? { provider, ...(model && { model }) } : undefined;
 }
 
@@ -264,8 +236,7 @@ const ROLE_GROUPS: Record<
 /** Ask how to get past a missing key: move the role to a provider whose key
  *  is set, or enter the key. Returns the role group to move, if any. */
 async function fixMissingKey(
-  err: MissingApiKeyError,
-  envFile: string
+  err: MissingApiKeyError
 ): Promise<Partial<Record<"agent" | "customer" | "judge", Provider>>> {
   const role = ROLE_GROUPS[err.role] ?? ROLE_GROUPS[SUPPORT_ROLES.judge]!;
   const keyName = API_KEY_ENV[err.provider][0]!;
@@ -287,7 +258,7 @@ async function fixMissingKey(
     `Set ${keyName}, or pass ${role.flag} with a provider whose key is set.`
   );
   if (choice === "enter") {
-    await enterApiKey(err.provider, envFile);
+    await enterApiKey(err.provider);
     return {};
   }
   return { [role.group]: choice };
@@ -308,7 +279,6 @@ async function fixMissingKey(
  */
 export async function runCli(options: CliOptions): Promise<void> {
   const name = options.name ?? "bin/agent";
-  const envFile = path.resolve(options.envFile ?? ".env");
 
   const agents: Record<string, AgentDef> = {};
   for (const def of options.agents) {
@@ -488,7 +458,7 @@ export async function runCli(options: CliOptions): Promise<void> {
   const providerHint = `Pass the provider as an argument: ${usage}`;
   if (!saved) {
     let chosen =
-      (await resolveProvider(providerArg, "agent", providerHint, envFile)) ??
+      (await resolveProvider(providerArg, "agent", providerHint)) ??
       (model ? providerForModel(model) : undefined);
     if (chosen && model) {
       const owner = providerForModel(model);
@@ -510,15 +480,13 @@ export async function runCli(options: CliOptions): Promise<void> {
       args.customer_provider,
       args.customer_model,
       SUPPORT_ROLES.customer,
-      "customer",
-      envFile
+      "customer"
     );
     const judgeChoice = await supportChoice(
       args.judge_provider,
       args.judge_model,
       "judge",
-      "judge",
-      envFile
+      "judge"
     );
     support = {
       ...(customerChoice && { customer: customerChoice }),
@@ -526,7 +494,7 @@ export async function runCli(options: CliOptions): Promise<void> {
     };
   }
 
-  provider ??= await pickProvider("agent", providerHint, envFile);
+  provider ??= await pickProvider("agent", providerHint);
 
   // The first Ctrl-C ends the conversation and still writes results; a
   // second one exits immediately.
@@ -563,7 +531,7 @@ export async function runCli(options: CliOptions): Promise<void> {
       if (!(err instanceof MissingApiKeyError)) {
         fail(err instanceof Error ? err.message : String(err));
       }
-      const moved = await fixMissingKey(err, envFile);
+      const moved = await fixMissingKey(err);
       if (moved.agent) {
         provider = moved.agent;
         model = undefined;

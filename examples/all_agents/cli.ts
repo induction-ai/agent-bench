@@ -14,11 +14,9 @@ import dotenv from "dotenv";
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
 // API keys from this repo's .env; variables already set win.
-const envFile = path.join(ROOT, ".env");
-dotenv.config({ path: envFile, quiet: true });
+dotenv.config({ path: path.join(ROOT, ".env"), quiet: true });
 
 await runCli({
   agents: [TravelAgent, TriviaAgent, BoardMeetingAgent],
-  envFile,
   logDir: path.join(ROOT, ".temp", "agents"),
 });

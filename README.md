@@ -26,9 +26,10 @@ bin/agent
 
 `bin/agent` asks for whatever the command line leaves out: the agent, the
 customer (0 is always you typing; the agent’s own follow), and the provider. It offers
-the providers whose API keys are set, picking on its own when there’s only
-one, and when a key is missing it asks for it (input hidden) and offers to
-save it to `.env`. The same run spelled out:
+runs on the first provider whose API key is set (`responses`, `completions`,
+`anthropic`, `gemini`, in that order) and says which; with no key at all, it
+asks for one (input hidden) for that run. Put keys in `.env` to keep them.
+The same run spelled out:
 
 ```sh
 bin/agent trivia gemini --customer ancient_rome --judge
@@ -177,8 +178,8 @@ await runCli({ agents: [TravelAgent, TriviaAgent, BoardMeetingAgent] });
 That is `examples/all_agents/cli.ts`, which `bin/agent` runs, give or take
 the paths: the examples load the repo’s `.env` and write runs to the repo’s
 `.temp/agents` wherever they are run from. Loading API keys is the
-command’s business; `runCli` only reads the environment, and saves a key
-typed at a prompt to the `envFile` it is given. Every command gets the same
+command’s business; `runCli` only reads the environment, and a key typed at
+its prompt lasts for that run. Every command gets the same
 options (`--customer`, `--judge`, `--run_id` and the rest) and asks for what
 they leave out. A command with a single agent drops the agent argument, so
 it reads `<command> [provider] [options]`.
