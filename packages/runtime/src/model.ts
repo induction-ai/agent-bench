@@ -1,4 +1,9 @@
 import { pickService, resolveModel } from "@agent-bench/model-stats/index.js";
+import type {
+  KnownAnthropicModelName,
+  KnownGeminiModelName,
+  KnownOpenAIModelName,
+} from "@agent-bench/model-stats/model_names.js";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
@@ -178,18 +183,17 @@ export function clampReasoningLevel(
 }
 
 /**
- * The level a spec runs at when it names none. For OpenAI and gemini this is
- * also what the provider does with an unconfigured request — an absent effort
- * resolves to `medium`, and gemini sizes its own thinking — so naming it
- * changes nothing. Anthropic departs: left alone it does no extended thinking
- * at all, which is not a useful default for a harness whose other providers
- * reason, so a bare claude spec runs at `medium` like the rest.
+ * The level a spec runs at when it names none: `medium` on every provider, so
+ * default runs on different providers think about as hard. For OpenAI that is
+ * also what an unconfigured request gets. Left alone, Claude does no extended
+ * thinking and gemini sizes its own, which can mean none at all; `@dynamic`
+ * still asks gemini to size its own.
  */
 const providerDefaultLevels: Record<Provider, SpecReasoningLevel> = {
   completions: "medium",
   responses: "medium",
   anthropic: "medium",
-  gemini: "dynamic",
+  gemini: "medium",
 };
 
 /**
@@ -244,10 +248,13 @@ const ANTHROPIC_THINKING_BUDGETS: Record<
 /**
  * Claude models driven with adaptive thinking + an output-config effort
  * instead of a token budget: 4.6 and newer, which answer a token budget with
- * "thinking.type.enabled is not supported for this model".
+ * "thinking.type.enabled is not supported for this model". A dated id like
+ * `claude-opus-4-20250514` is version 4, not 4.20250514.
  */
 function isAdaptiveThinkingModel(model: string): boolean {
-  const m = /^claude-[a-z]+-(\d+)(?:-(\d+))?/.exec(model.toLowerCase());
+  const m = /^claude-[a-z]+-(\d+)(?:-(\d{1,2}))?(?:-|$)/.exec(
+    model.toLowerCase()
+  );
   if (!m) return false;
   const major = Number(m[1]);
   const minor = Number(m[2] ?? 0);
@@ -291,6 +298,11 @@ function geminiThinkingBudget(
     case "max":
       return 4096;
   }
+}
+
+function isGemini3OrNewer(model: string): boolean {
+  const m = /^gemini-(\d+)/.exec(model);
+  return m ? Number(m[1]) >= 3 : false;
 }
 
 /** Gemini 3+ thinkingConfig for a level. Gemini 3 is configured by level, not
@@ -351,7 +363,7 @@ export function reasoningProviderOptions(
         },
       };
     case "gemini":
-      if (model.includes("gemini-3")) {
+      if (isGemini3OrNewer(model)) {
         return {
           google: { thinkingConfig: gemini3ThinkingConfig(reasoning, model) },
         };
@@ -366,26 +378,35 @@ export function reasoningProviderOptions(
   }
 }
 
+/** One known model per provider, each from that provider's own list, so a
+ *  table can't file a model under a provider that doesn't serve it. */
+type ProviderModels = {
+  responses: KnownOpenAIModelName;
+  completions: KnownOpenAIModelName;
+  anthropic: KnownAnthropicModelName;
+  gemini: KnownGeminiModelName;
+};
+
 /** The model the agent uses when a run names none. */
-const defaultModels: Record<Provider, string> = {
-  completions: "gpt-5.5",
-  responses: "gpt-5.5",
-  anthropic: "claude-opus-4-8",
-  gemini: "gemini-3.8-flash",
+const defaultModels: ProviderModels = {
+  completions: "gpt-6.1-sol",
+  responses: "gpt-6.1-sol",
+  anthropic: "claude-sonnet-5-5",
+  gemini: "gemini-4-argon",
 };
 
 /** The model a customer uses on a provider when the run names none: a cheap,
  *  fast one, since the customer only needs to follow a script. */
-const customerModels: Record<Provider, string> = {
+const customerModels: ProviderModels = {
   completions: "gpt-6-luna",
   responses: "gpt-6-luna",
-  anthropic: "claude-haiku-4-5",
-  gemini: "gemini-3.8-flash",
+  anthropic: "claude-haiku-5-5",
+  gemini: "gemini-3.5-flash-lite",
 };
 
 /** The judge's model on each provider: one that reads long transcripts
  *  well and cheaply, since the judge reads near-full transcripts. */
-const judgeModels: Record<Provider, string> = {
+const judgeModels: ProviderModels = {
   completions: "gpt-6-luna",
   responses: "gpt-6-luna",
   anthropic: "claude-sonnet-4-6",

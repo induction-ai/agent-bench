@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  defaultModelFor,
   get_support_models,
   MissingApiKeyError,
   normalizeModelSpec,
@@ -82,10 +83,10 @@ describe("normalizeModelSpec", () => {
       "claude-opus-4-8@medium"
     );
     expect(normalizeModelSpec("gemini", "gemini-3.1-pro-preview")).toBe(
-      "gemini-3.1-pro-preview@dynamic"
+      "gemini-3.1-pro-preview@medium"
     );
     expect(normalizeModelSpec("gemini", "gemini-2.5-pro")).toBe(
-      "gemini-2.5-pro@dynamic"
+      "gemini-2.5-pro@medium"
     );
   });
 
@@ -119,6 +120,15 @@ describe("normalizeModelSpec", () => {
     expect(() =>
       normalizeModelSpec("anthropic", "claude-opus-4-8@dynamic")
     ).toThrow(/only gemini/);
+  });
+});
+
+describe("defaultModelFor", () => {
+  it("names each provider's default model", () => {
+    expect(defaultModelFor("responses")).toBe("gpt-6.1-sol");
+    expect(defaultModelFor("completions")).toBe("gpt-6.1-sol");
+    expect(defaultModelFor("anthropic")).toBe("claude-sonnet-5-5");
+    expect(defaultModelFor("gemini")).toBe("gemini-4-argon");
   });
 });
 
@@ -171,6 +181,31 @@ describe("reasoningProviderOptions", () => {
     });
   });
 
+  it("uses adaptive thinking with an effort for claude 5 models", () => {
+    for (const model of [
+      "claude-sonnet-5-5",
+      "claude-haiku-5-5",
+      "claude-opus-5",
+      "claude-fable-5-1",
+    ]) {
+      expect(reasoningProviderOptions("anthropic", model, "medium")).toEqual({
+        anthropic: { thinking: { type: "adaptive" }, effort: "medium" },
+      });
+    }
+  });
+
+  it("maps the level to a thinking budget for dated claude models below 4.6", () => {
+    for (const model of [
+      "claude-opus-4-20250514",
+      "claude-haiku-4-5-20251001",
+      "claude-3-5-haiku-20241022",
+    ]) {
+      expect(reasoningProviderOptions("anthropic", model, "high")).toEqual({
+        anthropic: { thinking: { type: "enabled", budgetTokens: 4096 } },
+      });
+    }
+  });
+
   it("disables Anthropic thinking for none", () => {
     expect(
       reasoningProviderOptions("anthropic", "claude-opus-4-8", "none")
@@ -212,6 +247,15 @@ describe("reasoningProviderOptions", () => {
     ).toEqual({ google: { thinkingConfig: { thinkingLevel: "minimal" } } });
     expect(
       reasoningProviderOptions("gemini", "gemini-3-pro-preview", "minimal")
+    ).toEqual({ google: { thinkingConfig: { thinkingLevel: "low" } } });
+  });
+
+  it("selects a thinking level for gemini 4 models", () => {
+    expect(
+      reasoningProviderOptions("gemini", "gemini-4-argon", "high")
+    ).toEqual({ google: { thinkingConfig: { thinkingLevel: "high" } } });
+    expect(
+      reasoningProviderOptions("gemini", "gemini-4-argon", "minimal")
     ).toEqual({ google: { thinkingConfig: { thinkingLevel: "low" } } });
   });
 
@@ -294,14 +338,14 @@ describe("get_support_models", () => {
   it("moves each role to a provider whose key is set, with its model for the role", () => {
     process.env.ANTHROPIC_API_KEY = "test";
     const anthropic = get_support_models();
-    expect(label(anthropic.customer)).toBe("anthropic/claude-haiku-4-5@medium");
+    expect(label(anthropic.customer)).toBe("anthropic/claude-haiku-5-5@medium");
     expect(label(anthropic.judge)).toBe("anthropic/claude-sonnet-4-6@medium");
 
     delete process.env.ANTHROPIC_API_KEY;
     process.env.GEMINI_API_KEY = "test";
     const gemini = get_support_models();
-    expect(label(gemini.customer)).toBe("gemini/gemini-3.8-flash@dynamic");
-    expect(label(gemini.judge)).toBe("gemini/gemini-3.8-flash@dynamic");
+    expect(label(gemini.customer)).toBe("gemini/gemini-3.5-flash-lite@medium");
+    expect(label(gemini.judge)).toBe("gemini/gemini-3.8-flash@medium");
   });
 
   it("asks for OpenAI's key when no key is set", () => {

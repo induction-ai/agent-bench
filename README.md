@@ -89,12 +89,12 @@ conversation and still writes the results; a second Ctrl-C quits at once.
 The second argument picks the API the agent is called over. Left out, it
 follows `--model`, or the API keys that are set:
 
-| Provider      | API                     | Default model      | Key                 |
-| ------------- | ----------------------- | ------------------ | ------------------- |
-| `responses`   | OpenAI Responses        | `gpt-5.5`          | `OPENAI_API_KEY`    |
-| `completions` | OpenAI Chat Completions | `gpt-5.5`          | `OPENAI_API_KEY`    |
-| `anthropic`   | Anthropic Messages      | `claude-opus-4-8`  | `ANTHROPIC_API_KEY` |
-| `gemini`      | Gemini API              | `gemini-3.8-flash` | `GEMINI_API_KEY`    |
+| Provider      | API                     | Default model       | Key                 |
+| ------------- | ----------------------- | ------------------- | ------------------- |
+| `responses`   | OpenAI Responses        | `gpt-6.1-sol`       | `OPENAI_API_KEY`    |
+| `completions` | OpenAI Chat Completions | `gpt-6.1-sol`       | `OPENAI_API_KEY`    |
+| `anthropic`   | Anthropic Messages      | `claude-sonnet-5-5` | `ANTHROPIC_API_KEY` |
+| `gemini`      | Gemini API              | `gemini-4-argon`    | `GEMINI_API_KEY`    |
 
 `--model` takes a model id with an optional reasoning level:
 `<model>[@<none|minimal|low|medium|high|xhigh|max|dynamic>]`, for example
@@ -102,8 +102,8 @@ follows `--model`, or the API keys that are set:
 the level onto its own setting (OpenAI’s reasoning effort, Anthropic’s
 thinking budget or adaptive effort, Gemini’s thinking budget or level). A
 level above what a model supports is lowered to its highest, and a spec with
-no level is recorded with the one its provider applies, so two runs that ran
-alike always carry the same model string. `@dynamic`, letting the model size
+no level runs at `medium` on every provider and is recorded with it, so two
+runs that ran alike always carry the same model string. `@dynamic`, letting the model size
 its own thinking, is Gemini-only.
 
 `OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL` and `GEMINI_BASE_URL` point a
@@ -121,8 +121,8 @@ and the run says so:
 | Provider                   | Customer, LLM-simulated tools | Judge               |
 | -------------------------- | ----------------------------- | ------------------- |
 | `responses`, `completions` | `gpt-6-luna`                  | `gpt-6-luna`        |
-| `anthropic`                | `claude-haiku-4-5`            | `claude-sonnet-4-6` |
-| `gemini`                   | `gemini-3.8-flash`            | `gemini-3.8-flash`  |
+| `anthropic`                | `claude-haiku-5-5`            | `claude-sonnet-4-6` |
+| `gemini`                   | `gemini-3.5-flash-lite`       | `gemini-3.8-flash`  |
 
 So any one key runs everything. To put a role on a particular provider or
 model, use `--customer_provider` / `--customer_model` and `--judge_provider` /
