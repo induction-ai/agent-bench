@@ -1,0 +1,52 @@
+{%- comment -%}
+  The styles results.liquid and bench_results.liquid share.
+{%- endcomment %}
+<style>
+  :root {
+    --bg: #f7f7f5; --surface: #ffffff; --border: #e2e2dd; --text: #1d1d1b;
+    --muted: #6b6b66; --customer: #2f6fdb; --agent: #1f8a5b; --tool: #b7791f;
+    --met: #1f8a5b; --unmet: #c2410c; --code-bg: #f1f1ee; --error-bg: #fdecea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --surface: #1f1f1d; --border: #34342f; --text: #ececea;
+      --muted: #9a9a93; --customer: #6ea0f5; --agent: #4cc38a; --tool: #e0a54a;
+      --met: #4cc38a; --unmet: #f08a5d; --code-bg: #2a2a27; --error-bg: #3a1f1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  a { color: var(--customer); }
+  .muted { color: var(--muted); }
+  .meta { color: var(--muted); font-size: 13px; margin: 2px 0; }
+  code, pre { font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 20px 0; }
+  .stat, section, .msg { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+  .stat { padding: 12px 14px; }
+  .stat-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .stat-value { font-size: 22px; font-weight: 600; }
+  section { padding: 16px; margin: 0 0 16px; overflow-x: auto; }
+  .error { background: var(--error-bg); border-color: var(--unmet); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  td.met { color: var(--met); font-weight: 700; }
+  td.unmet { color: var(--unmet); font-weight: 700; }
+  .msg { padding: 12px 14px; margin: 0 0 10px; border-left: 4px solid var(--border); }
+  .msg.user { border-left-color: var(--customer); }
+  .msg.assistant { border-left-color: var(--agent); }
+  .msg.tool { border-left-color: var(--tool); }
+  .msg header { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
+  .role { font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+  .user .role { color: var(--customer); } .assistant .role { color: var(--agent); } .tool .role { color: var(--tool); }
+  .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .payload { margin: 6px 0; }
+  .payload summary { cursor: pointer; font-size: 13px; }
+  .payload-kind { font-weight: 600; }
+  .payload pre { background: var(--code-bg); padding: 10px; border-radius: 6px; margin: 6px 0 0;
+    white-space: pre-wrap; overflow-wrap: anywhere; max-height: 480px; overflow-y: auto; }
+</style>

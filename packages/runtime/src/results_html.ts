@@ -1,13 +1,15 @@
 /**
- * Renders a run's results.json as a single self-contained results.html (no
- * scripts, no external assets, readable straight off disk) from the Liquid
- * template results.liquid beside this file.
+ * Renders a run's or a bench's results.json as a single self-contained
+ * results.html (no scripts, no external assets, readable straight off disk)
+ * from the Liquid templates beside this file: results.liquid for a run,
+ * bench_results.liquid for a bench.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ModelMessage } from "ai";
 import { Liquid } from "liquidjs";
+import type { BenchResultRecord } from "./bench.ts";
 import type { JudgeResult } from "./judge.ts";
 import type { UsageData } from "./usage.ts";
 
@@ -41,7 +43,7 @@ export type RunResultRecord = {
   llm_latency_ms: number;
 };
 
-function formatCents(cents: number): string {
+export function formatCents(cents: number): string {
   if (cents < 1) return `${cents.toFixed(2)}¢`;
   if (cents < 100) return `${cents.toFixed(1)}¢`;
   return `$${(cents / 100).toFixed(2)}`;
@@ -198,5 +200,34 @@ export async function writeResultsHtml(
   fs.writeFileSync(
     path.join(dir_path, "results.html"),
     await renderResultsHtml(data)
+  );
+}
+
+export async function renderBenchHtml(
+  data: BenchResultRecord
+): Promise<string> {
+  const { total_costs, avg_costs } = data.metrics;
+  return liquid.renderFile("bench_results", {
+    ...data,
+    title: `${data.agent} / ${data.customer} × ${data.count}`,
+    support: Object.entries(data.support).map(([role, choice]) => ({
+      role,
+      model: `${choice.provider}/${choice.model}`,
+    })),
+    cost_rows: Object.keys(total_costs).map((role) => ({
+      role,
+      total: total_costs[role],
+      avg: avg_costs[role],
+    })),
+  }) as Promise<string>;
+}
+
+export async function writeBenchHtml(
+  dir_path: string,
+  data: BenchResultRecord
+): Promise<void> {
+  fs.writeFileSync(
+    path.join(dir_path, "results.html"),
+    await renderBenchHtml(data)
   );
 }

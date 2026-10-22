@@ -114,15 +114,15 @@ provider at any compatible endpoint, such as a gateway or a local server.
 Beside the agent under test, a run uses two supporting models: the
 **customer** (which also answers the LLM-simulated tools) and the **judge**
 (which gates the customer’s `done` and, with `--judge`, scores the run).
-Both run on OpenAI by default. When `OPENAI_API_KEY` isn’t set, each moves
-to the first provider whose key is, with that provider’s model for the role,
-and the run says so:
+Both run on the first of these providers whose key is set, whatever the
+agent runs on, so every run with the same keys gets the same customer and
+judge. The run says so when that isn’t Gemini:
 
-| Provider                   | Customer, LLM-simulated tools | Judge               |
-| -------------------------- | ----------------------------- | ------------------- |
-| `responses`, `completions` | `gpt-6-luna`                  | `gpt-6-luna`        |
-| `anthropic`                | `claude-haiku-5-5`            | `claude-sonnet-4-6` |
-| `gemini`                   | `gemini-3.5-flash-lite`       | `gemini-3.8-flash`  |
+| Order | Provider    | Customer, LLM-simulated tools | Judge               |
+| ----- | ----------- | ----------------------------- | ------------------- |
+| 1     | `gemini`    | `gemini-3.5-flash-lite`       | `gemini-3.5-flash`  |
+| 2     | `responses` | `gpt-6-luna`                  | `gpt-6-luna`        |
+| 3     | `anthropic` | `claude-haiku-5-5`            | `claude-sonnet-4-6` |
 
 So any one key runs everything. To put a role on a particular provider or
 model, use `--customer_provider` / `--customer_model` and `--judge_provider` /
@@ -158,6 +158,42 @@ Costs come from list prices in `packages/model-stats`, priced per request
 (long-context tiers included). A model with no listed price is costed as its
 closest known family, with a warning.
 
+## Benches
+
+One conversation is one sample. `bin/bench` runs an agent against one
+customer several times, judges every run, and summarizes the scores, so a
+real change stands out from a lucky conversation:
+
+```sh
+bin/bench trivia gemini --customer ancient_rome --count 8 --concurrency 4
+```
+
+It takes `bin/agent`’s options, less the ones for typing the customer side
+yourself, and asks for what they leave out the same way. Each run happens
+in its own worker thread.
+
+| Option          | Default | What it does                                                      |
+| --------------- | ------- | ----------------------------------------------------------------- |
+| `--count`       | 8       | Number of runs                                                    |
+| `--concurrency` | 4       | Runs at a time                                                    |
+| `--bench_id`    |         | Resume a bench with its saved settings; finished runs replay      |
+| `--verbose`     | off     | Print every run’s whole conversation, not only its progress lines |
+
+A run that ends without a score, from an error or a failed judge, is retried
+from scratch up to three times. Once 90% of the runs have finished, a run
+that passes twice the turns of the longest finished one (and at least 10) is
+stopped. The first Ctrl-C ends the runs under way and still writes the
+results; a second one exits.
+
+A bench writes `.temp/benches/<bench_id>/` (or under `--log_dir`):
+
+| File           | Contents                                                                 |
+| -------------- | ------------------------------------------------------------------------ |
+| `input.json`   | The bench’s settings and run ids, for resuming it                        |
+| `results.json` | Mean, median, range and spread of the scores, cost by role, and each run |
+| `results.html` | The same, as a page that links to each run’s own page                    |
+| `<run_id>/`    | Each run, laid out as above                                              |
+
 ## Building on the framework
 
 The runtime is a library. A **command** is a short program that imports it,
@@ -182,7 +218,10 @@ command’s business; `runCli` only reads the environment, and a key typed at
 its prompt lasts for that run. Every command gets the same
 options (`--customer`, `--judge`, `--run_id` and the rest) and asks for what
 they leave out. A command with a single agent drops the agent argument, so
-it reads `<command> [provider] [options]`.
+it reads `<command> [provider] [options]`. `runBenchCli` takes the same
+options and makes a bench command (`examples/all_agents/bench.ts`, which
+`bin/bench` runs). Its runs load the command’s script again in a worker
+thread, so call it at the script’s top level.
 
 | Example               | What it shows                                                                        | Run it                                            |
 | --------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------- |
@@ -265,16 +304,16 @@ Tools more than one agent uses live in `packages/tools`, a folder per family:
 
 ## Repository layout
 
-| Folder                 | Contents                                                                                    |
-| ---------------------- | ------------------------------------------------------------------------------------------- |
-| `agents/travel_agent`  | The travel agent: its tools (`tools.ts`), customers (`customers.ts`) and agent (`index.ts`) |
-| `agents/trivia`        | The trivia agent and its customers                                                          |
-| `agents/board_meeting` | The board meeting agent, its customers, and the company documents it reads (`docs/`)        |
-| `examples/all_agents`  | The command behind `bin/agent`                                                              |
-| `examples/weather`     | A self-contained agent and command                                                          |
-| `packages/runtime`     | The framework: the conversation loop, customers, judges, models, cost tracking, `runCli`    |
-| `packages/tools`       | Tools shared by agents (`wikipedia/`)                                                       |
-| `packages/model-stats` | Model list prices and cache rates                                                           |
+| Folder                 | Contents                                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------- |
+| `agents/travel_agent`  | The travel agent: its tools (`tools.ts`), customers (`customers.ts`) and agent (`index.ts`)             |
+| `agents/trivia`        | The trivia agent and its customers                                                                      |
+| `agents/board_meeting` | The board meeting agent, its customers, and the company documents it reads (`docs/`)                    |
+| `examples/all_agents`  | The commands behind `bin/agent` and `bin/bench`                                                         |
+| `examples/weather`     | A self-contained agent and command                                                                      |
+| `packages/runtime`     | The framework: the conversation loop, customers, judges, models, cost tracking, `runCli`, `runBenchCli` |
+| `packages/tools`       | Tools shared by agents (`wikipedia/`)                                                                   |
+| `packages/model-stats` | Model list prices and cache rates                                                                       |
 
 ## Development
 

@@ -410,7 +410,7 @@ const judgeModels: ProviderModels = {
   completions: "gpt-6-luna",
   responses: "gpt-6-luna",
   anthropic: "claude-sonnet-4-6",
-  gemini: "gemini-3.8-flash",
+  gemini: "gemini-3.5-flash",
 };
 
 /** The model the agent runs on a provider when the run names none. */
@@ -568,10 +568,10 @@ export type ModelChoice = { provider: Provider; model?: ModelSpec };
 
 /**
  * The supporting models of a run, beside the agent under test. Unchosen,
- * each runs on OpenAI, or on the first provider with an API key when
- * OPENAI_API_KEY isn't set, with that provider's model for the role. Choosing models makes runs cheaper or keeps
- * them on one provider, but scores are then not directly comparable to runs
- * on the defaults.
+ * each runs on the first of Gemini, OpenAI and Anthropic with an API key,
+ * whatever the agent runs on, with that provider's model for the role.
+ * Choosing models makes runs cheaper or keeps them on one provider, but
+ * scores are then not directly comparable to runs on the defaults.
  */
 export type SupportModelChoices = {
   /** The simulated customer, and the tools that answer with an LLM. */
@@ -598,14 +598,21 @@ export const SUPPORT_ROLES = {
   judge: "judge",
 } as const;
 
+/** Where an unchosen supporting role runs: the first of these with an API
+ *  key. OpenAI's two APIs share a key, so only responses is listed. */
+const SUPPORT_PROVIDERS: readonly Provider[] = [
+  "gemini",
+  "responses",
+  "anthropic",
+];
+
 /**
- * A supporting role's model: the run's choice for it, else the role's
- * default provider, else (that provider having no key) the first provider
- * with one, which the run is told about.
+ * A supporting role's model: the run's choice for it, else the first of
+ * SUPPORT_PROVIDERS with an API key, which the run is told about when it
+ * isn't the first. With no key at all, the caller hears about the first.
  */
 function supportModel(
   choice: ModelChoice | undefined,
-  defaultProvider: Provider,
   models: Record<Provider, string>,
   role: string
 ): Model {
@@ -616,17 +623,14 @@ function supportModel(
       role
     );
   }
-  const fallback = hasApiKey(defaultProvider)
-    ? undefined
-    : providers.find(hasApiKey);
-  if (!fallback) {
-    // Its key is set, or none is: then the caller hears about the default.
-    return get_model(defaultProvider, models[defaultProvider], role);
+  const preferred = SUPPORT_PROVIDERS[0]!;
+  const provider = SUPPORT_PROVIDERS.find(hasApiKey) ?? preferred;
+  const model = get_model(provider, models[provider], role);
+  if (provider !== preferred) {
+    console.log(
+      `Running the ${role} on ${provider}/${model.model} (${API_KEY_ENV[preferred][0]} isn’t set).`
+    );
   }
-  const model = get_model(fallback, models[fallback], role);
-  console.log(
-    `Running the ${role} on ${fallback}/${model.model} (${API_KEY_ENV[defaultProvider][0]} isn’t set).`
-  );
   return model;
 }
 
@@ -639,15 +643,10 @@ export function get_support_models(
   choices: SupportModelChoices = {}
 ): SupportModels {
   const customer = lazy(() =>
-    supportModel(
-      choices.customer,
-      "responses",
-      customerModels,
-      SUPPORT_ROLES.customer
-    )
+    supportModel(choices.customer, customerModels, SUPPORT_ROLES.customer)
   );
   const judge = lazy(() =>
-    supportModel(choices.judge, "responses", judgeModels, SUPPORT_ROLES.judge)
+    supportModel(choices.judge, judgeModels, SUPPORT_ROLES.judge)
   );
   return {
     get customer() {

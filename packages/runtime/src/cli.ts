@@ -7,9 +7,18 @@ import {
   type RunInputRecord,
 } from "./agent.ts";
 import {
+  isBenchWorker,
+  run_bench,
+  runBenchWorker,
+  type BenchConfig,
+  type BenchInputRecord,
+} from "./bench.ts";
+import {
   API_KEY_ENV,
   customerModelFor,
   defaultModelFor,
+  get_model,
+  get_support_models,
   hasApiKey,
   judgeModelFor,
   MissingApiKeyError,
@@ -264,7 +273,197 @@ async function fixMissingKey(
   return { [role.group]: choice };
 }
 
-// --- The command ---
+// --- Shared by both commands ---
+
+/** The command's agents by name. */
+function agentRegistry(defs: AgentDef[]): Record<string, AgentDef> {
+  const agents: Record<string, AgentDef> = {};
+  for (const def of defs) {
+    if (agents[def.agent_name]) {
+      throw new Error(`Two agents are named “${def.agent_name}”`);
+    }
+    agents[def.agent_name] = def;
+  }
+  return agents;
+}
+
+/**
+ * The yargs chain both commands start from: the agent and provider
+ * positionals (no agent with a single one) and the agent's and supporting
+ * models' options.
+ */
+function baseArgs(
+  argv: string[],
+  name: string,
+  usage: string,
+  agentNames: string[],
+  only: AgentDef | undefined,
+  describe: string
+) {
+  return yargs(argv)
+    .scriptName(name)
+    .usage(usage)
+    .command(only ? "$0 [provider]" : "$0 [agent] [provider]", describe, (y) =>
+      (only
+        ? y
+        : y.positional("agent", {
+            type: "string",
+            describe: `${agentNames.join(", ")}; asked when left out`,
+          })
+      ).positional("provider", {
+        type: "string",
+        describe: `${providers.join(", ")}; taken from --model or from the API keys you have when left out`,
+      })
+    )
+    .option("model", {
+      type: "string",
+      describe:
+        "Model for the agent, optionally with a reasoning level: <model>[@<none|minimal|low|medium|high|xhigh|max|dynamic>]",
+    })
+    .option("customer_provider", {
+      type: "string",
+      describe: `Provider for the simulated customer and LLM-backed tools (${providers.join(", ")}); default the first of Gemini, OpenAI and Anthropic with an API key`,
+    })
+    .option("customer_model", {
+      type: "string",
+      describe: "Model for the simulated customer and LLM-backed tools",
+    })
+    .option("judge_provider", {
+      type: "string",
+      describe: `Provider for the judge, which gates the customer’s done and scores the run (${providers.join(", ")}); default the first of Gemini, OpenAI and Anthropic with an API key`,
+    })
+    .option("judge_model", {
+      type: "string",
+      describe: "Model for the judge",
+    })
+    .option("bust_cache", {
+      type: "boolean",
+      default: true,
+      describe:
+        "Add a per-run dummy tool so a run never reuses another run’s prompt cache",
+    })
+    .alias("h", "help")
+    .strictOptions();
+}
+
+/** The agent and provider positionals as given: `bin/agent gemini` puts a
+ *  provider where the agent goes. */
+function positionals(
+  agentArg: string | undefined,
+  providerArg: string | undefined,
+  agents: Record<string, AgentDef>
+): { agentArg?: string; providerArg?: string } {
+  if (
+    agentArg !== undefined &&
+    providerArg === undefined &&
+    !(agentArg in agents) &&
+    (providers as readonly string[]).includes(agentArg)
+  ) {
+    return { providerArg: agentArg };
+  }
+  return { agentArg, providerArg };
+}
+
+/** `agent` when the command has it, else a pick. */
+async function chooseAgent(
+  agent: string | undefined,
+  agents: Record<string, AgentDef>,
+  name: string
+): Promise<string> {
+  if (agent !== undefined && agent in agents) return agent;
+  if (agent !== undefined) console.log(`${name} has no agent “${agent}”.`);
+  const agentNames = Object.keys(agents);
+  return choose(
+    "Which agent?",
+    agentNames.map((n) => ({
+      label: `${n} (customers: ${Object.keys(agents[n]!.customers).join(", ")})`,
+      value: n,
+    })),
+    `Pass one of ${agentNames.join(", ")} as the first argument.`
+  );
+}
+
+/** The agent's provider and the supporting models' choices, from the
+ *  command line, with picks for what it leaves unclear. */
+async function chooseModels(
+  args: {
+    customer_provider?: string;
+    customer_model?: string;
+    judge_provider?: string;
+    judge_model?: string;
+  },
+  providerArg: string | undefined,
+  model: ModelSpec | undefined,
+  usage: string
+): Promise<{ provider: Provider; support: SupportModelChoices }> {
+  const providerHint = `Pass the provider as an argument: ${usage}`;
+  let chosen =
+    (await resolveProvider(providerArg, "agent", providerHint)) ??
+    (model ? providerForModel(model) : undefined);
+  if (chosen && model) {
+    const owner = providerForModel(model);
+    if (owner && !(isOpenAI(owner) && isOpenAI(chosen)) && owner !== chosen) {
+      console.log(`${model} is a model for ${owner}, not ${chosen}.`);
+      if (
+        await confirm(
+          `Run it on ${owner}?`,
+          true,
+          "Pass a provider that serves the model."
+        )
+      ) {
+        chosen = owner;
+      }
+    }
+  }
+  const customerChoice = await supportChoice(
+    args.customer_provider,
+    args.customer_model,
+    SUPPORT_ROLES.customer,
+    "customer"
+  );
+  const judgeChoice = await supportChoice(
+    args.judge_provider,
+    args.judge_model,
+    "judge",
+    "judge"
+  );
+  return {
+    provider: chosen ?? (await pickProvider("agent", providerHint)),
+    support: {
+      ...(customerChoice && { customer: customerChoice }),
+      ...(judgeChoice && { judge: judgeChoice }),
+    },
+  };
+}
+
+type ModelState = {
+  provider: Provider;
+  model: ModelSpec | undefined;
+  support: SupportModelChoices;
+};
+
+/** Ask about the missing key in `err`, and move the role it belongs to
+ *  when the answer is another provider. */
+async function afterMissingKey(
+  err: MissingApiKeyError,
+  state: ModelState
+): Promise<ModelState> {
+  const moved = await fixMissingKey(err);
+  let { provider, model, support } = state;
+  if (moved.agent) {
+    provider = moved.agent;
+    model = undefined;
+  }
+  if (moved.customer) {
+    support = { ...support, customer: { provider: moved.customer } };
+  }
+  if (moved.judge) {
+    support = { ...support, judge: { provider: moved.judge } };
+  }
+  return { provider, model, support };
+}
+
+// --- bin/agent ---
 
 /**
  * A command that runs one conversation between one of `agents` and a
@@ -280,69 +479,32 @@ async function fixMissingKey(
 export async function runCli(options: CliOptions): Promise<void> {
   const name = options.name ?? "bin/agent";
 
-  const agents: Record<string, AgentDef> = {};
-  for (const def of options.agents) {
-    if (agents[def.agent_name]) {
-      throw new Error(`Two agents are named “${def.agent_name}”`);
-    }
-    agents[def.agent_name] = def;
-  }
+  const agents = agentRegistry(options.agents);
   const agentNames = Object.keys(agents);
   const only = options.agents.length === 1 ? options.agents[0] : undefined;
   const usage = only
     ? `Usage: ${name} [${providers.join("|")}] [options]`
     : `Usage: ${name} [${agentNames.join("|")}] [${providers.join("|")}] [options]`;
 
-  const args = yargs(options.argv ?? process.argv.slice(2))
-    .scriptName(name)
-    .usage(usage)
-    .command(
-      only ? "$0 [provider]" : "$0 [agent] [provider]",
-      only
-        ? `Run one ${only.agent_name} conversation`
-        : "Run one agent conversation",
-      (y) =>
-        (only
-          ? y
-          : y.positional("agent", {
-              type: "string",
-              describe: `${agentNames.join(", ")}; asked when left out`,
-            })
-        ).positional("provider", {
-          type: "string",
-          describe: `${providers.join(", ")}; taken from --model or from the API keys you have when left out`,
-        })
-    )
-    .option("model", {
-      type: "string",
-      describe:
-        "Model for the agent, optionally with a reasoning level: <model>[@<none|minimal|low|medium|high|xhigh|max|dynamic>]",
-    })
+  const args = baseArgs(
+    options.argv ?? process.argv.slice(2),
+    name,
+    usage,
+    agentNames,
+    only,
+    only
+      ? `Run one ${only.agent_name} conversation`
+      : "Run one agent conversation"
+  )
     .option("customer", {
       type: "string",
       describe:
         "Customer name, “human” (you type), or “auto” (the first one); asked when left out",
     })
-    .option("customer_provider", {
-      type: "string",
-      describe: `Provider for the simulated customer and LLM-backed tools (${providers.join(", ")}); default OpenAI, else the first with an API key`,
-    })
-    .option("customer_model", {
-      type: "string",
-      describe: "Model for the simulated customer and LLM-backed tools",
-    })
     .option("judge", {
       type: "boolean",
       default: false,
       describe: "Score the finished conversation with the judge",
-    })
-    .option("judge_provider", {
-      type: "string",
-      describe: `Provider for the judge, which gates the customer’s done and scores the run (${providers.join(", ")}); default OpenAI, else the first with an API key`,
-    })
-    .option("judge_model", {
-      type: "string",
-      describe: "Model for the judge",
     })
     .option("message", {
       type: "string",
@@ -363,29 +525,14 @@ export async function runCli(options: CliOptions): Promise<void> {
       default: options.logDir ?? path.join(".temp", "agents"),
       describe: "Parent directory for run output",
     })
-    .option("bust_cache", {
-      type: "boolean",
-      default: true,
-      describe:
-        "Add a per-run dummy tool so a run never reuses another run’s prompt cache",
-    })
-    .alias("h", "help")
-    .strictOptions()
     .parseSync();
 
   const logDir = path.resolve(args.log_dir);
-  let agentArg = only ? undefined : (args.agent as string | undefined);
-  let providerArg = args.provider as string | undefined;
-  // `bin/agent gemini`: a provider where the agent goes.
-  if (
-    agentArg !== undefined &&
-    providerArg === undefined &&
-    !(agentArg in agents) &&
-    (providers as readonly string[]).includes(agentArg)
-  ) {
-    providerArg = agentArg;
-    agentArg = undefined;
-  }
+  const { agentArg, providerArg } = positionals(
+    only ? undefined : (args.agent as string | undefined),
+    args.provider as string | undefined,
+    agents
+  );
 
   let agent: string | undefined = only?.agent_name ?? agentArg;
   let provider: Provider | undefined;
@@ -422,17 +569,7 @@ export async function runCli(options: CliOptions): Promise<void> {
 
   if (!saved) model = await validModel(args.model, "model");
 
-  if (agent === undefined || !(agent in agents)) {
-    if (agent !== undefined) console.log(`${name} has no agent “${agent}”.`);
-    agent = await choose(
-      "Which agent?",
-      agentNames.map((n) => ({
-        label: `${n} (customers: ${Object.keys(agents[n]!.customers).join(", ")})`,
-        value: n,
-      })),
-      `Pass one of ${agentNames.join(", ")} as the first argument.`
-    );
-  }
+  agent = await chooseAgent(agent, agents, name);
   const def = agents[agent]!;
 
   const customerNames = Object.keys(def.customers);
@@ -455,46 +592,15 @@ export async function runCli(options: CliOptions): Promise<void> {
     );
   }
 
-  const providerHint = `Pass the provider as an argument: ${usage}`;
   if (!saved) {
-    let chosen =
-      (await resolveProvider(providerArg, "agent", providerHint)) ??
-      (model ? providerForModel(model) : undefined);
-    if (chosen && model) {
-      const owner = providerForModel(model);
-      if (owner && !(isOpenAI(owner) && isOpenAI(chosen)) && owner !== chosen) {
-        console.log(`${model} is a model for ${owner}, not ${chosen}.`);
-        if (
-          await confirm(
-            `Run it on ${owner}?`,
-            true,
-            "Pass a provider that serves the model."
-          )
-        ) {
-          chosen = owner;
-        }
-      }
-    }
-    provider = chosen;
-    const customerChoice = await supportChoice(
-      args.customer_provider,
-      args.customer_model,
-      SUPPORT_ROLES.customer,
-      "customer"
-    );
-    const judgeChoice = await supportChoice(
-      args.judge_provider,
-      args.judge_model,
-      "judge",
-      "judge"
-    );
-    support = {
-      ...(customerChoice && { customer: customerChoice }),
-      ...(judgeChoice && { judge: judgeChoice }),
-    };
+    ({ provider, support } = await chooseModels(
+      args,
+      providerArg,
+      model,
+      usage
+    ));
   }
-
-  provider ??= await pickProvider("agent", providerHint);
+  let state: ModelState = { provider: provider!, model, support };
 
   // The first Ctrl-C ends the conversation and still writes results; a
   // second one exits immediately.
@@ -513,10 +619,10 @@ export async function runCli(options: CliOptions): Promise<void> {
       const result = await run_agent({
         agents,
         agent,
-        provider,
-        model,
+        provider: state.provider,
+        model: state.model,
         customer,
-        support,
+        support: state.support,
         run_id: runId,
         log_dir: logDir,
         judge,
@@ -531,17 +637,193 @@ export async function runCli(options: CliOptions): Promise<void> {
       if (!(err instanceof MissingApiKeyError)) {
         fail(err instanceof Error ? err.message : String(err));
       }
-      const moved = await fixMissingKey(err);
-      if (moved.agent) {
-        provider = moved.agent;
-        model = undefined;
-      }
-      if (moved.customer) {
-        support = { ...support, customer: { provider: moved.customer } };
-      }
-      if (moved.judge) {
-        support = { ...support, judge: { provider: moved.judge } };
-      }
+      state = await afterMissingKey(err, state);
     }
   }
+}
+
+// --- bin/bench ---
+
+/**
+ * A command that runs one of `agents` against one simulated customer
+ * `--count` times, `--concurrency` at a time, judges every run, and
+ * summarizes the scores and costs (see bench.ts). It takes bin/agent's
+ * arguments, less those for a person typing, and asks for what it leaves out
+ * the same way. Each run happens in a worker thread that loads the calling
+ * script again, so call this at the top level of that script.
+ */
+export async function runBenchCli(options: CliOptions): Promise<void> {
+  const agents = agentRegistry(options.agents);
+  if (isBenchWorker()) return runBenchWorker(agents);
+
+  const name = options.name ?? "bin/bench";
+  const agentNames = Object.keys(agents);
+  const only = options.agents.length === 1 ? options.agents[0] : undefined;
+  const usage = only
+    ? `Usage: ${name} [${providers.join("|")}] [options]`
+    : `Usage: ${name} [${agentNames.join("|")}] [${providers.join("|")}] [options]`;
+
+  const args = baseArgs(
+    options.argv ?? process.argv.slice(2),
+    name,
+    usage,
+    agentNames,
+    only,
+    only
+      ? `Run ${only.agent_name} several times and summarize the scores`
+      : "Run an agent several times and summarize the scores"
+  )
+    .option("customer", {
+      type: "string",
+      describe: "Customer name, or “auto” (the first one); asked when left out",
+    })
+    .option("count", {
+      type: "number",
+      default: 8,
+      describe: "Number of runs",
+    })
+    .option("concurrency", {
+      type: "number",
+      default: 4,
+      describe: "Runs at a time",
+    })
+    .option("bench_id", {
+      type: "string",
+      describe:
+        "Resume a previous bench by id, with its settings; finished runs replay their recorded responses",
+    })
+    .option("fresh", {
+      type: "boolean",
+      default: false,
+      describe: "With --bench_id: ignore the bench’s saved settings",
+    })
+    .option("verbose", {
+      type: "boolean",
+      default: false,
+      describe: "Print every run’s whole conversation",
+    })
+    .option("log_dir", {
+      type: "string",
+      default: options.logDir ?? path.join(".temp", "benches"),
+      describe: "Parent directory for bench output",
+    })
+    .parseSync();
+
+  const logDir = path.resolve(args.log_dir);
+  const benchId = args.bench_id;
+  const saved =
+    benchId && !args.fresh
+      ? (readJson(
+          path.join(logDir, benchId, "input.json")
+        ) as BenchInputRecord | null)
+      : null;
+  if (benchId && !args.fresh && !saved) {
+    console.log(`There’s no bench ${benchId} in ${logDir}.`);
+    const fresh = await confirm(
+      `Start a new bench with the id ${benchId}?`,
+      false,
+      "Pass --log_dir to point at the bench’s parent directory, or --fresh to start a new bench with this id."
+    );
+    if (!fresh) process.exit(1);
+  }
+
+  let config: Omit<BenchConfig, "provider" | "model" | "support">;
+  let state: ModelState;
+  if (saved) {
+    const {
+      bench_id: _id,
+      run_ids: _runs,
+      provider,
+      model,
+      support,
+      ...rest
+    } = saved;
+    // How much to print is up to this invocation, not the saved bench.
+    config = { ...rest, verbose: args.verbose || rest.verbose };
+    state = { provider, model, support };
+  } else {
+    const { agentArg, providerArg } = positionals(
+      only ? undefined : (args.agent as string | undefined),
+      args.provider as string | undefined,
+      agents
+    );
+    const model = await validModel(args.model, "model");
+    const agent = await chooseAgent(only?.agent_name ?? agentArg, agents, name);
+    const customerNames = Object.keys(agents[agent]!.customers);
+    let customer = args.customer === "auto" ? customerNames[0] : args.customer;
+    if (customer === undefined || !customerNames.includes(customer)) {
+      if (customer === "human") {
+        console.log("A bench needs a simulated customer.");
+      } else if (customer !== undefined) {
+        console.log(`${agent} has no customer “${customer}”.`);
+      }
+      customer = await choose(
+        "Which customer?",
+        customerNames.map((n) => ({ label: n, value: n })),
+        `Pass --customer <${["auto", ...customerNames].join("|")}>.`
+      );
+    }
+    config = {
+      agent,
+      customer,
+      count: args.count,
+      concurrency: args.concurrency,
+      bust_cache: args.bust_cache,
+      verbose: args.verbose,
+    };
+    state = {
+      model,
+      ...(await chooseModels(args, providerArg, model, usage)),
+    };
+  }
+
+  // Every model is built once here, so a missing API key is asked about
+  // before any run starts, and every run uses the same resolved models.
+  let resolved: BenchConfig;
+  for (;;) {
+    try {
+      const agentModel = get_model(state.provider, state.model, "agent");
+      const support = get_support_models(state.support);
+      resolved = {
+        ...config,
+        provider: state.provider,
+        model: agentModel.model,
+        support: {
+          customer: {
+            provider: support.customer.provider,
+            model: support.customer.model,
+          },
+          judge: {
+            provider: support.judge.provider,
+            model: support.judge.model,
+          },
+        },
+      };
+      break;
+    } catch (err) {
+      if (!(err instanceof MissingApiKeyError)) {
+        fail(err instanceof Error ? err.message : String(err));
+      }
+      state = await afterMissingKey(err, state);
+    }
+  }
+  close();
+
+  // The first Ctrl-C ends the runs under way and still writes results; a
+  // second one exits immediately.
+  const controller = new AbortController();
+  process.on("SIGINT", () => {
+    if (controller.signal.aborted) process.exit(130);
+    console.log("\nInterrupted. Writing results (Ctrl-C again to quit now)");
+    controller.abort("Interrupted");
+  });
+
+  const result = await run_bench(resolved, {
+    log_dir: logDir,
+    bench_id: benchId,
+    entry: process.argv[1]!,
+    abortSignal: controller.signal,
+    command: name,
+  });
+  if (result.metrics.scored === 0) process.exitCode = 1;
 }

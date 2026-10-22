@@ -68,6 +68,8 @@ export type RunOptions = {
   judge?: boolean;
   /** When aborted, end the conversation and write partial results. */
   abortSignal?: AbortSignal;
+  /** Called with the turn number as each simulated-customer turn starts. */
+  onTurn?: (turn: number) => void;
   /** In human mode, sent as the first customer message. */
   initial_message?: string;
   /** The CLI command that ran this, for the “rerun with” hint. */
@@ -110,13 +112,17 @@ function customerTurnLimit(targetTurns: number): number {
   return Math.max(MINIMUM_TURN_LIMIT, targetTurns * 2);
 }
 
-/** A run id that sorts by start time: `r_20261006_153012_a1b2c3`. */
-export function generate_run_id(now = new Date()): string {
+/** An id that sorts by start time: `<prefix>_20261006_153012_a1b2c3`. */
+export function generate_id(prefix: string, now = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   const stamp =
     `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_` +
     `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-  return `r_${stamp}_${randomBytes(3).toString("hex")}`;
+  return `${prefix}_${stamp}_${randomBytes(3).toString("hex")}`;
+}
+
+export function generate_run_id(now = new Date()): string {
+  return generate_id("r", now);
 }
 
 /** The directory a run writes to, created on first use. */
@@ -137,7 +143,7 @@ function writeJson(dir: string, name: string, data: unknown) {
 
 /** The commit this code is at, and its GitHub link when the origin is on
  *  GitHub; nulls outside a git checkout. */
-function gitInfo(): { sha: string | null; url: string | null } {
+export function gitInfo(): { sha: string | null; url: string | null } {
   const cwd = path.dirname(fileURLToPath(import.meta.url));
   const git = (args: string) =>
     execSync(`git ${args}`, {
@@ -181,6 +187,7 @@ export type RunAgentInput = {
   bust_cache?: boolean;
   initial_message?: string;
   abortSignal?: AbortSignal;
+  onTurn?: (turn: number) => void;
   quiet?: boolean;
   command?: string;
 };
@@ -223,6 +230,7 @@ export async function run_agent(input: RunAgentInput): Promise<RunResult> {
   return agent.run({
     judge: input.judge,
     abortSignal: input.abortSignal,
+    onTurn: input.onTurn,
     initial_message: input.initial_message,
     quiet: input.quiet,
     command: input.command,
@@ -440,7 +448,8 @@ export abstract class BaseAgent {
     const messages = await record_run(this.run_dir, async () => {
       const loop = await this.agent_loop(
         opts.abortSignal,
-        opts.initial_message
+        opts.initial_message,
+        opts.onTurn
       );
       error = loop.error ?? null;
 
@@ -591,7 +600,8 @@ export abstract class BaseAgent {
 
   private async agent_loop(
     abortSignal?: AbortSignal,
-    initial_message?: string
+    initial_message?: string,
+    onTurn?: (turn: number) => void
   ): Promise<{ messages: ModelMessage[]; error?: string }> {
     let messages: ModelMessage[] = [];
     let lastAgentReply: string | undefined;
@@ -661,6 +671,7 @@ export abstract class BaseAgent {
         }
         turn++;
         this.report(`Turn ${turn}`);
+        onTurn?.(turn);
         userInput = result.message;
         this.log(`👤 Customer: ${userInput}\n`);
       } else if (pendingInitialMessage) {

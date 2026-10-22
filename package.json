@@ -11,6 +11,7 @@
   "type": "module",
   "scripts": {
     "agent": "bin/agent",
+    "bench": "bin/bench",
     "test": "bin/test",
     "test:watch": "vitest",
     "typecheck": "pnpm -r typecheck",

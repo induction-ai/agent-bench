@@ -1,0 +1,88 @@
+<!doctype html>
+{%- comment -%}
+  results.html for one bench. Rendered by results_html.ts from the bench's
+  results.json fields, plus `title`, `support` and `cost_rows` (see
+  renderBenchHtml). Each run links to its own results.html.
+{%- endcomment %}
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{ title }}</title>
+{% render "styles" %}
+</head>
+<body>
+<main>
+  <h1>{{ title }}</h1>
+  <div class="meta">{{ provider }} · {{ model }}</div>
+  <div class="meta">
+    Bench <code>{{ bench_id }}</code> · {{ timestamp | datetime }}
+    {%- if git_sha %} · commit
+      {%- if git_url %} <a href="{{ git_url }}">{{ git_sha | slice: 0, 8 }}</a>
+      {%- else %} {{ git_sha | slice: 0, 8 }}
+      {%- endif %}
+    {%- endif %}
+  </div>
+  {%- if support.size > 0 %}
+  <div class="meta">
+    {%- for s in support %}{% unless forloop.first %} · {% endunless %}{{ s.role }}: {{ s.model }}{% endfor -%}
+  </div>
+  {%- endif %}
+
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Mean score</div><div class="stat-value">{% if metrics.scored > 0 %}{{ metrics.mean }}/10{% else %}None{% endif %}</div><div class="muted">{{ metrics.scored }} of {{ count }} scored</div></div>
+    <div class="stat"><div class="stat-label">Median</div><div class="stat-value">{{ metrics.median }}</div></div>
+    <div class="stat"><div class="stat-label">Range</div><div class="stat-value">{{ metrics.min }}–{{ metrics.max }}</div></div>
+    <div class="stat"><div class="stat-label">Stddev</div><div class="stat-value">{{ metrics.stddev }}</div></div>
+    <div class="stat"><div class="stat-label">Cost per run</div><div class="stat-value">{{ metrics.avg_cost | format_cost }}</div></div>
+  </div>
+
+  {%- if cost_rows.size > 0 %}
+  <section>
+    <h2>Cost by role</h2>
+    <table>
+      <thead><tr><th>Role</th><th>Per run</th><th>Total</th></tr></thead>
+      <tbody>
+        {%- for c in cost_rows %}
+        <tr><td>{{ c.role }}</td><td>{{ c.avg | format_cost }}</td><td>{{ c.total | format_cost }}</td></tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </section>
+  {%- endif %}
+
+  <section>
+    <h2>Runs</h2>
+    <table>
+      <thead><tr><th>Run</th><th>Score</th><th>Cost</th><th>Customer turns</th><th>Agent turns</th><th>Agent latency</th></tr></thead>
+      <tbody>
+        {%- for r in runs %}
+        <tr>
+          <td><a href="{{ r.results_html }}"><code>{{ r.run_id }}</code></a></td>
+          <td>{{ r.score }}/10</td>
+          <td>{{ r.cost | format_cost }}</td>
+          <td>{{ r.customer_turns | format_number }}</td>
+          <td>{{ r.client_turns | format_number }}</td>
+          <td>{{ r.llm_latency_ms | format_latency }}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  {%- if excluded_runs.size > 0 %}
+  <section class="error">
+    <h2>Runs without a score</h2>
+    <table>
+      <thead><tr><th>Run</th><th>Error</th></tr></thead>
+      <tbody>
+        {%- for r in excluded_runs %}
+        <tr><td><a href="{{ r.results_html }}"><code>{{ r.run_id }}</code></a></td><td><pre>{{ r.error }}</pre></td></tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </section>
+  {%- endif %}
+</main>
+</body>
+</html>

@@ -326,32 +326,41 @@ describe("get_support_models", () => {
   const label = (m: { provider: string; model: string }) =>
     `${m.provider}/${m.model}`;
 
-  it("runs every role on OpenAI when its key is set", () => {
+  it("runs every role on Gemini when its key is set, whatever else is set", () => {
     process.env.OPENAI_API_KEY = "test";
+    process.env.ANTHROPIC_API_KEY = "test";
     process.env.GEMINI_API_KEY = "test";
     const support = get_support_models();
-    expect(label(support.customer)).toBe("responses/gpt-6-luna@medium");
+    expect(label(support.customer)).toBe("gemini/gemini-3.5-flash-lite@medium");
     expect(support.tool).toBe(support.customer);
-    expect(label(support.judge)).toBe("responses/gpt-6-luna@medium");
+    expect(label(support.judge)).toBe("gemini/gemini-3.5-flash@medium");
   });
 
-  it("moves each role to a provider whose key is set, with its model for the role", () => {
+  it("moves each role to OpenAI, then Anthropic, when Gemini's key isn't set", () => {
+    process.env.OPENAI_API_KEY = "test";
     process.env.ANTHROPIC_API_KEY = "test";
+    const openai = get_support_models();
+    expect(label(openai.customer)).toBe("responses/gpt-6-luna@medium");
+    expect(label(openai.judge)).toBe("responses/gpt-6-luna@medium");
+
+    delete process.env.OPENAI_API_KEY;
     const anthropic = get_support_models();
     expect(label(anthropic.customer)).toBe("anthropic/claude-haiku-5-5@medium");
     expect(label(anthropic.judge)).toBe("anthropic/claude-sonnet-4-6@medium");
-
-    delete process.env.ANTHROPIC_API_KEY;
-    process.env.GEMINI_API_KEY = "test";
-    const gemini = get_support_models();
-    expect(label(gemini.customer)).toBe("gemini/gemini-3.5-flash-lite@medium");
-    expect(label(gemini.judge)).toBe("gemini/gemini-3.8-flash@medium");
   });
 
-  it("asks for OpenAI's key when no key is set", () => {
+  it("runs every role on Gemini when only Google's own key name is set", () => {
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY = "test";
+    process.env.OPENAI_API_KEY = "test";
+    expect(label(get_support_models().judge)).toBe(
+      "gemini/gemini-3.5-flash@medium"
+    );
+  });
+
+  it("asks for Gemini's key when no key is set", () => {
     const support = get_support_models();
     expect(() => support.judge).toThrow(MissingApiKeyError);
-    expect(() => support.judge).toThrow(/OPENAI_API_KEY/);
+    expect(() => support.judge).toThrow(/GEMINI_API_KEY/);
   });
 
   it("uses a chosen provider's model for the role", () => {
